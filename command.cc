@@ -256,27 +256,82 @@ void Command::print()
 void Command::execute()
 {
     print();
-
+    int lastread = 0;
+    int fd[2];
     for (int i =0; i < _numberOfSimpleCommands; i++) {
+        if (i != _numberOfSimpleCommands - 1){
+        if (pipe(fd) == -1) {
+            fprintf(stderr, "FAILED TO PIPE\n");
+            break;
+            }
+        }
         pid_t process = fork();
         if (process < 0) {
             fprintf(stderr, "FAILED TO FORK\n");
+            if (i != _numberOfSimpleCommands - 1) {
+                close(fd[1]);
+                close(fd[0]);
+            }
             break;
         }
         else if (process == 0) {
+            if (i != 0) {
+                if (dup2(lastread,0) == -1) fprintf(stderr, "FAILED TO READ FROM PIPE\n");
+                close(lastread);
+            }
+            if (i != _numberOfSimpleCommands - 1) {
+                close(fd[0]);
+                dup2(fd[1],1);
+                close(fd[1]);
+            }
+            if (_outFile && i == _numberOfSimpleCommands - 1) {
+                int outputF;
+                if (_append) outputF = open(_outFile, O_WRONLY | O_APPEND | O_CREAT, 0644);
+                else outputF = open(_outFile, O_WRONLY | O_TRUNC |O_CREAT, 0644);
+                if (outputF == -1) {
+                    fprintf(stderr, "FAILED TO OPEN OUTPUT FILE\n");
+                    exit(1);
+                }
+                if (dup2(outputF, 1) == -1) fprintf(stderr, "FAILED TO WRITE IN OUTPUT FILE\n");
+                if (_out_error) if (dup2(outputF,2 ) == -1) fprintf(stderr, "FAILED TO WRITE IN OUTPUT FILE\n");
+                close(outputF);
+            }
+            if (_inputFile && i == 0) {
+                int inputF = open(_inputFile, O_RDONLY);
+                if (inputF == -1) {
+                    fprintf(stderr, "FAILED TO OPEN INPUT FILE\n");
+                    exit(1);
+                }
+                if (dup2(inputF,0) == -1) fprintf(stderr, "FAILED TO READ FROM INPUT FILE\n");
+                close(inputF);
+            }
+            if (_errFile && !_out_error) {
+                int errorF = open(_errFile, O_WRONLY | O_TRUNC | O_CREAT, 0644);
+                if (errorF == -1) {
+                    fprintf(stderr, "FAILED TO OPEN ERROR FILE\n");
+                    exit(1);
+                }
+                if (dup2(errorF,2) == -1) fprintf(stderr, "FAILED TO WRITE IN ERROR FILE\n");
+                close(errorF);
+            }
             execvp(_simpleCommands[i]->_arguments[0], _simpleCommands[i]->_arguments);
             fprintf(stderr,"UNKNOWN COMMAND\n");
             exit(1);
         }
         else {
+            if (lastread != 0) close(lastread);
+            if (i != _numberOfSimpleCommands - 1) {
+                close(fd[1]);
+                lastread = fd[0];
+            }
             if (_background == 0) {
                 int status;
                 waitpid(process, &status, 0);
             }
         }
-        clear();
-        prompt();
     }
+    clear();
+    prompt();
 }
 
 void Command::prompt()
