@@ -3,4 +3,4 @@ project(myshell)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(myshell command.cc)
+add_executable(myshell command.cc tokenizer.cc)

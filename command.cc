@@ -25,6 +25,7 @@
 #include <cctype>
 #include <iostream>
 #include <sstream>
+#include <fstream>
 #include "command.h"
 #include "tokenizer.h"
 
@@ -49,7 +50,7 @@ void parse(std::vector<Token> &tokens)
                 command.insertSimpleCommand(simplecommand);
                 simplecommand = new SimpleCommand();
                 break;
-            case TOKEN_REDIRECT: // >
+            case TOKEN_REDIRECT:
                 if (i + 1 >= tokens.size() || tokens[i+1].type != TOKEN_ARGUMENT && tokens[i+1].type != TOKEN_COMMAND) {
                     fprintf(stderr,"ERROR: INVALID TOKEN.\n");
                     command.insertSimpleCommand(simplecommand);
@@ -63,7 +64,7 @@ void parse(std::vector<Token> &tokens)
                     i++;
                     break;
                 }
-            case TOKEN_APPEND: // >>
+            case TOKEN_APPEND:
                 if (i + 1 >= tokens.size() || tokens[i+1].type != TOKEN_ARGUMENT && tokens[i+1].type != TOKEN_COMMAND) {
                     fprintf(stderr,"ERROR: INVALID TOKEN.\n");
                     command.insertSimpleCommand(simplecommand);
@@ -77,7 +78,7 @@ void parse(std::vector<Token> &tokens)
                     i++;
                     break;
                 }
-            case TOKEN_INPUT: // <
+            case TOKEN_INPUT:
                 if (i + 1 >= tokens.size() || tokens[i+1].type != TOKEN_ARGUMENT && tokens[i+1].type != TOKEN_COMMAND) {
                     fprintf(stderr,"ERROR: INVALID TOKEN.\n");
                     command.insertSimpleCommand(simplecommand);
@@ -90,7 +91,7 @@ void parse(std::vector<Token> &tokens)
                     i++;
                     break;
                 }
-            case TOKEN_ERROR: // 2>
+            case TOKEN_ERROR:
                 if (i + 1 >= tokens.size() || tokens[i+1].type != TOKEN_ARGUMENT && tokens[i+1].type != TOKEN_COMMAND) {
                     fprintf(stderr,"ERROR: INVALID TOKEN.\n");
                     command.insertSimpleCommand(simplecommand);
@@ -103,7 +104,7 @@ void parse(std::vector<Token> &tokens)
                     i++;
                     break;
                 }
-            case TOKEN_REDIRECT_AND_ERROR: // >>&
+            case TOKEN_REDIRECT_AND_ERROR:
                 if (i + 1 >= tokens.size() || tokens[i+1].type != TOKEN_ARGUMENT && tokens[i+1].type != TOKEN_COMMAND) {
                     fprintf(stderr,"ERROR: INVALID TOKEN.\n");
                     command.insertSimpleCommand(simplecommand);
@@ -120,7 +121,7 @@ void parse(std::vector<Token> &tokens)
                     command._append = 1;
                     break;
                 }
-            case TOKEN_BACKGROUND: // &
+            case TOKEN_BACKGROUND:
                 command._background = 1;
                 break;
             case TOKEN_EOF:
@@ -200,7 +201,7 @@ void Command::clear()
         }
 
         free(_simpleCommands[i]->_arguments);
-        free(_simpleCommands[i]);
+        delete _simpleCommands[i];
     }
 
     if (_outFile)
@@ -240,6 +241,7 @@ void Command::print()
         {
             printf("\"%s\" \t", _simpleCommands[i]->_arguments[j]);
         }
+        printf("\n");
     }
 
     printf("\n\n");
@@ -254,12 +256,27 @@ void Command::print()
 void Command::execute()
 {
     print();
-    /*
-        Write your code here
-    */
 
-    clear();
-    prompt();
+    for (int i =0; i < _numberOfSimpleCommands; i++) {
+        pid_t process = fork();
+        if (process < 0) {
+            fprintf(stderr, "FAILED TO FORK\n");
+            break;
+        }
+        else if (process == 0) {
+            execvp(_simpleCommands[i]->_arguments[0], _simpleCommands[i]->_arguments);
+            fprintf(stderr,"UNKNOWN COMMAND\n");
+            exit(1);
+        }
+        else {
+            if (_background == 0) {
+                int status;
+                waitpid(process, &status, 0);
+            }
+        }
+        clear();
+        prompt();
+    }
 }
 
 void Command::prompt()
