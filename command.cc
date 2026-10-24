@@ -27,6 +27,10 @@
 #include <sstream>
 #include <fstream>
 #include "command.h"
+
+#include <csignal>
+#include <cstdlib>
+
 #include "tokenizer.h"
 
 
@@ -253,9 +257,53 @@ void Command::print()
     printf("\n\n");
 }
 
+void myexit() {
+    printf("\nGood Bye\n");
+    exit(0);
+}
+
+void myCd(char *directory) {
+    char *home = getenv("HOME");
+    if (directory == nullptr) {
+        if (chdir(home) == -1) fprintf(stderr,"FAILED TO CD ");
+    }
+    else if (chdir(directory) == -1) {
+        fprintf(stderr, "FAILED TO CD\n");
+    }
+}
+
+void logchild(pid_t pid,int status) {
+    int log = open("logs.txt", O_WRONLY | O_CREAT | O_APPEND, 0644);
+    if (log == -1) {
+        fprintf(stderr, "FAILED TO OPEN LOG FILE\n");
+        return;
+    }
+    time_t t = time(NULL);
+    std::string time(ctime(&t));
+    std::string message = time + "Child with pid " + std::to_string(pid) + " was terminated with status " + std::to_string(WEXITSTATUS(status)) + "\n";
+    write(log,message.c_str(),message.length());
+    close(log);
+
+}
+
+void hanldesignaal(int sig) {
+    int saved_errno = errno;
+    int status;
+    pid_t pid;
+    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) logchild(pid,status);
+    saved_errno = errno;
+}
+
 void Command::execute()
 {
     print();
+    char *command = _simpleCommands[0]->_arguments[0];
+    if (strcmp(command, "exit") == 0) myexit();
+    else if (strcmp(command, "cd") == 0) {
+        myCd(_simpleCommands[0]->_arguments[1]);
+        clear();
+        prompt();
+    }
     int lastread = 0;
     int fd[2];
     for (int i =0; i < _numberOfSimpleCommands; i++) {
@@ -326,7 +374,8 @@ void Command::execute()
             }
             if (_background == 0) {
                 int status;
-                waitpid(process, &status, 0);
+                pid_t pid = waitpid(process, &status, 0);
+                if (pid) logchild(pid,status);
             }
         }
     }
@@ -352,6 +401,8 @@ SimpleCommand *Command::_currentSimpleCommand;
 
 int main()
 {
+    signal(SIGINT, SIG_IGN);
+    signal(SIGCHLD,hanldesignaal);
     Command::_currentCommand.prompt();
     return 0;
 }
